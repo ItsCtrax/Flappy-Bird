@@ -1,34 +1,34 @@
 import pygame
-import random
+from random import *
 
-# Constants
 WIDTH = 640
 HEIGHT = 480
 GAP = 100
 PIPE_HEIGHT = 150
-GROUND_HEIGHT = 80  # Adjust this value according to your ground image
+GROUND_HEIGHT = 80
 
 # Images
 img_back = "bg.png"
 img_bird = "bird.png"
 img_bird_up = "bird-up.png"
 img_bird_down = "bird-down.png"
+img_bird_shield = "bird-shield.png"
+img_bird_up_shield = "bird-up-shield.png"
+img_bird_down_shield = "bird-down-shield.png"
 img_pipe = "pipe.png"
 img_pipe1 = "pipe1.png"
 img_ground = "ground.png"
 img_first_kid = "first-kid.png"
+img_shield = "shield.png"
+img_heart = "heart.png"
 
-# Initialize Pygame
 pygame.init()
 
-# Window
 window = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Flappy Bird")
 
-# Background
 background = pygame.transform.scale(pygame.image.load(img_back), (WIDTH, HEIGHT))
 
-# Ground
 ground = pygame.image.load(img_ground)
 ground_rect = ground.get_rect(midtop = (WIDTH // 2, HEIGHT - GROUND_HEIGHT))
 
@@ -41,15 +41,15 @@ class Bird(pygame.sprite.Sprite):
             "normal": pygame.image.load(img_bird)
         }
         self.image = self.images["normal"]
-        self.rect = self.image.get_rect(center = (x, y))
+        self.rect = self.image.get_rect(center=(x, y))
         self.y_speed = 0
 
     def update(self):
         self.y_speed += 0.5
         self.rect.centery += self.y_speed
-        if self.rect.centery >= HEIGHT - GROUND_HEIGHT - self.rect.height // 2:  # Adjust bird's position
+        if self.rect.centery >= HEIGHT - GROUND_HEIGHT - self.rect.height // 2:
             self.rect.centery = HEIGHT - GROUND_HEIGHT - self.rect.height // 2
-        if self.rect.centery <= 0:  # Prevent bird from going off the top of the screen
+        if self.rect.centery <= 0:
             self.rect.centery = 0
         if self.y_speed < 0:
             self.image = self.images["up"]
@@ -59,34 +59,57 @@ class Bird(pygame.sprite.Sprite):
             self.image = self.images["normal"]
 
     def jump(self):
-        self.y_speed = -10
+        self.y_speed = -8
 
 class Pipe(pygame.sprite.Sprite):
     def __init__(self, img, x, y, is_top):
         pygame.sprite.Sprite.__init__(self)
         self.image = pygame.image.load(img)
-        self.rect = self.image.get_rect(midbottom = (x, y)) if is_top else self.image.get_rect(midtop = (x, y))
-        self.speed = 5
+        self.rect = self.image.get_rect(midbottom=(x, y)) if is_top else self.image.get_rect(midtop=(x, y))
+        self.speed = 3
 
     def update(self):
         self.rect.centerx -= self.speed
-        if self.rect.right < 0:  # If the pipe has gone off the screen
-            self.kill()  # Remove the pipe
+        if self.rect.right < 0:
+            self.kill()
+
+class Life(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load(img)
+        self.rect = self.image.get_rect(topleft=(x, y))
+
+class FirstKid(pygame.sprite.Sprite):
+    def __init__(self, img, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.image.load(img)
+        self.rect = self.image.get_rect(center=(x, y))
+        self.speed = 2
+
+    def update(self):
+        self.rect.centerx -= self.speed
+        if self.rect.right < 0:
+            self.kill()
 
 def spawn_pipes():
-    y = random.randint(100, HEIGHT - 100 - PIPE_HEIGHT - GROUND_HEIGHT)  # Adjusted y-value for the gap between pipes
+    y = randint(100, HEIGHT - 100 - PIPE_HEIGHT - GROUND_HEIGHT)
     top_pipe = Pipe(img_pipe, WIDTH, y, True)
     bottom_pipe = Pipe(img_pipe1, WIDTH, y + PIPE_HEIGHT, False)
     pipes.add(top_pipe, bottom_pipe)
 
-# Bird
 bird = Bird(img_bird, 50, HEIGHT // 2)
 
-# Pipes
 pipes = pygame.sprite.Group()
-spawn_pipes()  # Spawn the initial pipes
+spawn_pipes()
 
-# Game loop
+# Lives
+lives = pygame.sprite.Group()
+for i in range(3):
+    life = Life(img_heart, 10 + i * 30, 10)
+    lives.add(life)
+
+first_kids = pygame.sprite.Group()
+
 run = True
 while run:
     for event in pygame.event.get():
@@ -96,25 +119,50 @@ while run:
             if event.key == pygame.K_SPACE:
                 bird.jump()
 
-    if not run:  # If the game is over
+    if not run:
         break
 
     window.blit(background, (0, 0))
 
     bird.update()
+    lives.update()
+    first_kids.update()
+    pipes.update()
+
     window.blit(bird.image, bird.rect)
 
-    pipes.update()
     for pipe in pipes:
         window.blit(pipe.image, pipe.rect)
 
+    for life in lives:
+        window.blit(life.image, life.rect)
+
+    if len(pipes) % 5 == 0 and len(first_kids) == 0:
+        first_kid = FirstKid(img_first_kid, 600, 385)  # <--- changed
+        first_kids.add(first_kid)
+
+    for first_kid in first_kids:
+        window.blit(first_kid.image, first_kid.rect)
+
+    if pygame.sprite.spritecollideany(bird, first_kids):
+        if len(lives) < 3:
+            life = Life(img_heart, 10 + len(lives) * 30, 10)
+            lives.add(life)
+        first_kids.empty()
+
     window.blit(ground, ground_rect)
 
-    if pygame.sprite.spritecollideany(bird, pipes):
-        run = False
+    collided_pipes = pygame.sprite.spritecollide(bird, pipes, False)
+    if collided_pipes:
+        if len(lives) > 1:
+            lives.sprites()[-1].kill()
+            for pipe in collided_pipes:
+                pipe.kill()
+        else:
+            run = False
 
-    if not pipes:  # If all pipes have been removed
-        spawn_pipes()  # Spawn new pipes
+    if not pipes:
+        spawn_pipes()
 
     pygame.display.update()
     pygame.time.Clock().tick(120)
